@@ -10,6 +10,8 @@ from sklearn.preprocessing import KBinsDiscretizer
 
 from sklearn.model_selection import train_test_split, validation_curve, GridSearchCV
 
+from sklearn.metrics import ConfusionMatrixDisplay
+
 from sklearn.metrics import accuracy_score as accuracy
 from sklearn.metrics import precision_score as precision
 from sklearn.metrics import recall_score as recall
@@ -23,11 +25,11 @@ from sklearn.metrics import log_loss
 RANDOM_STATE = 42
 
 # %% [markdown]
-# READ DATA
+# #READ DATA
 
 # %%
-trainDF = pd.read_csv("driving/train_motion_data.csv").dropna()
-testDF = pd.read_csv("driving/test_motion_data.csv").dropna()
+trainDF = pd.read_csv("../driving/train_motion_data.csv").dropna()
+testDF = pd.read_csv("../driving/test_motion_data.csv").dropna()
 
 # %% [markdown]
 # #NO CROSS VALIDATIONS
@@ -67,19 +69,28 @@ accuracy(testy, pred)
 # class_weight : {"balanced", "balanced_subsample"}, dict or list of dicts, default=None
 # ccp_alpha : non-negative float, default=0.0
 
-
+# %% [markdown]
+# ##data
 # %%
 # using one big data set to get better results
 df = pd.concat([trainDF, testDF], axis=0, join='outer')
 
-X = df.drop(columns=['Class'])
-y = np.ravel(df['Class'])
+all_X = df.drop(columns=['Class'])
+all_y = np.ravel(df['Class'])
 
-X, X_test, y, y_test = train_test_split(X, y, test_size=0.25, random_state=RANDOM_STATE)
+X, X_test, y, y_test = train_test_split(all_X, all_y, test_size=0.25, random_state=RANDOM_STATE)
 
-#Discretize X to hopefully pred data of continuous features better
-# kbd = KBinsDiscretizer(n_bins=20, strategy='kmeans')
+# %%
+# # Discretize X to hopefully predict data of continuous features better
+# kbd = KBinsDiscretizer(n_bins=20, strategy='uniform')
 # X = kbd.fit_transform(X)
+# # this looked like it might help at a specific number of bins, however,
+# # cross validation should be used to find the number of bins, and I'm not
+# # sure how to implement cross validation in the preprocessing step
+
+# %% [markdown]
+# ##plotting cross validation on hyper parameters
+
 # %%
 # get an idea of where hyper parameters should go
 
@@ -112,7 +123,7 @@ def plotValCurve(model, X, y, hParam:str, paramValues:list, cv:int, nJobs = None
     plt.ylabel('Score', fontsize=16)
 
 # %% [markdown]
-# ### v0
+# ## v0
 
 # %%
 defaultModel = RandomForestClassifier(random_state=RANDOM_STATE)
@@ -153,20 +164,32 @@ plotValCurve(defaultModel, X, y, 'min_impurity_decrease', list(np.linspace(0.0, 
 plotValCurve(defaultModel, X, y, 'ccp_alpha', list(np.linspace(0.0, 1, 20)), cv, nJobs)
 
 # %% [markdown]
-# ### now that we've looked for the right ranges of hyper params lets do a grid search
+# ## now that we've looked for the right ranges of hyper params lets do a grid search to make V1
 
-newBaseModel = RandomForestClassifier(min_samples_split=4, random_state=RANDOM_STATE)
+# %%
+newBaseModel = RandomForestClassifier(random_state=RANDOM_STATE)
 rfModelTunner = GridSearchCV(newBaseModel,
                           {'min_samples_split':list(range(2, 8+1)),
                            'max_features': list(range(2, 7+1)),
                            'min_samples_leaf':list(range(1, 10+1))},
-                          n_jobs=nJobs)
+                          n_jobs=nJobs,
+                          cv=cv)
 rfModelTunner.fit(X, y)
-cv_rfModel = rfModelTunner.best_estimator_
-print(cv_rfModel)
 
 # %%
-# now lets test
+cv_rfModel = rfModelTunner.best_estimator_
+print(rfModelTunner.best_params_)
+
+# %% [markdown]
+# ## Testing v1
+
+# %% [markdown]
+# ### just testing data
+
+# %%
+ConfusionMatrixDisplay.from_estimator(cv_rfModel, X_test, y_test)
+
+# %%
 pred = cv_rfModel.predict(X_test)
 
 print('accuracy: ', accuracy(y_test, pred))
@@ -176,5 +199,33 @@ print('f1', f1(y_test, pred, average=None))
 
 pred_proba = cv_rfModel.predict_proba(X_test)
 print('loss', log_loss(y_test, pred_proba))
+
+print('len: ', len(y_test))
+print('pred: ', pred)
+print('true: ', y_test)
+
+# %% [markdown]
+# ### All of the data
+
+# %%
+ConfusionMatrixDisplay.from_estimator(cv_rfModel, all_X, all_y)
+
+# %%
+all_pred = cv_rfModel.predict(all_X)
+
+print('accuracy: ', accuracy(all_y, all_pred))
+print('precision: ', precision(all_y, all_pred, average=None))
+print('recall', recall(all_y, all_pred, average=None))
+print('f1', f1(all_y, all_pred, average=None))
+
+all_pred_proba = cv_rfModel.predict_proba(all_X)
+print('loss', log_loss(all_y, all_pred_proba))
+
+print('len: ', len(all_y))
+print('pred: ', all_pred)
+print('true: ', all_y)
+
+# %%
+print()
 
 # %%
