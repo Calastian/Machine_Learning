@@ -1,4 +1,4 @@
-
+# %%
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -12,94 +12,66 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
-from sklearn.model_selection import cross_val_score
+from sklearn.model_selection import cross_val_score, train_test_split,  GridSearchCV
 from sklearn.naive_bayes import GaussianNB
 from sklearn.preprocessing import StandardScaler
 
 
-def naive_bayes_classifier(X_train, y_train, X_test, y_test):
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
 
-    model = GaussianNB()
-    model.fit(X_train_scaled, y_train)
+# %%
+# Load and prepare data
+trainDF = pd.read_csv("driving/train_motion_data.csv").dropna()
+testDF = pd.read_csv("driving/test_motion_data.csv").dropna()
 
-    y_pred = model.predict(X_test_scaled)
+features = ["AccX", "AccY", "AccZ", "GyroX", "GyroY", "GyroZ"]
 
-    accuracy = accuracy_score(y_test, y_pred)
-    precision = precision_score(y_test, y_pred, average="weighted")
-    recall = recall_score(y_test, y_pred, average="weighted")
-    f1 = f1_score(y_test, y_pred, average="weighted")
-    report = classification_report(y_test, y_pred)
-    confusion = confusion_matrix(y_test, y_pred)
-    loss = log_loss(y_test, model.predict_proba(X_test_scaled))
+X_train = trainDF[features]
+y_train = trainDF["Class"]
+X_test = testDF[features]
+y_test = testDF["Class"]
 
-    return accuracy, precision, recall, f1, report, confusion, loss
+# %%
+# Train Gaussian Naive Bayes 
+model = GaussianNB()
+model.fit(X_train, y_train)
 
+# %%
+# Predict and evaluate then data join/split 
+y_pred = model.predict(X_test)
+y_proba = model.predict_proba(X_test)
 
-def loadDataset(file_path):
-    return pd.read_csv(file_path)
+acc = accuracy_score(y_test, y_pred)
+report = classification_report(y_test, y_pred)
+cm = confusion_matrix(y_test, y_pred)
+loss = log_loss(y_test, y_proba)
 
-
-def saveDataset(df, file_path):
-    df.to_csv(file_path, index=False)
-
-
-def load_and_prepare_data():
-    """Load and prepare the dataset"""
-
-    # Load datasets
-    train_df = pd.read_csv("./driving/train_motion_data.csv")
-    test_df = pd.read_csv("./driving/test_motion_data.csv")
-
-    # Prepare features
-    features = ["AccX", "AccY", "AccZ", "GyroX", "GyroY", "GyroZ"]
-    X_train = train_df[features]
-    y_train = train_df["Class"]
-    X_test = test_df[features]
-    y_test = test_df["Class"]
-
-    # Scale features
-    return X_train, X_test, y_train, y_test
+print(f"Accuracy: {acc:.2f}")
+print(f"Classification Report:\n{report}")
+print(f"Confusion Matrix:\n{cm}")
+print(f"Log Loss: {loss:.2f}")
 
 
-def trainModel(X_train, y_train):
-    model = GaussianNB()
-    model.fit(X_train, y_train)
-    return model
+df = pd.concat([trainDF, testDF], axis=0, join="outer")
+X = df[features]
+y = np.ravel(df["Class"])
+
+X, X_split, y, y_split = train_test_split(X, y, test_size=0.25, random_state=42)
+
+# %%
+# Cross Val Part
+newModel = GaussianNB()
+modelTune = GridSearchCV(newModel, {}, cv=5, n_jobs=-1)
+modelTune.fit(X,y)
+cv_model = modelTune.best_estimator_
+pred = cv_model.predict(X_split)
 
 
-def predictModel(model, X_test):
-    return model.predict(X_test)
+# %%
+# Metrics
+print('accuracy: ', accuracy_score(y_split, pred))
+print('precision: ', precision_score(y_split, pred, average=None))
+print('recall', recall_score(y_split, pred, average=None))
+print('f1', f1_score(y_split, pred, average=None))
 
-
-def evaluateModel(model, X_test, y_test):
-    y_pred = model.predict(X_test)
-
-    accuracy = accuracy_score(y_test, y_pred)
-    precision = precision_score(y_test, y_pred, average="weighted")
-    recall = recall_score(y_test, y_pred, average="weighted")
-    f1 = f1_score(y_test, y_pred, average="weighted")
-    report = classification_report(y_test, y_pred)
-    confusion = confusion_matrix(y_test, y_pred)
-    loss = log_loss(y_test, model.predict_proba(X_test))
-
-    return accuracy, precision, recall, f1, report, confusion, loss
-
-
-  
-
-if __name__ == "__main__":
-    X_train, X_test, y_train, y_test = load_and_prepare_data()
-    model = trainModel(X_train, y_train)
-    accuracy, precision, recall, f1, report, confusion, loss = evaluateModel(
-        model, X_test, y_test
-    )
-    print(f"Accuracy: {accuracy:.2f}")
-    print(f"Precision: {precision:.2f}")
-    print(f"Recall: {recall:.2f}")
-    print(f"F1 Score: {f1:.2f}")
-    print(f"Classification Report:\n{report}")
-    print(f"Confusion Matrix:\n{confusion}")
-    print(f"Log Loss: {loss:.2f}")
+pred_proba = modelTune.predict_proba(X_split)
+print('loss', log_loss(y_split, pred_proba))
