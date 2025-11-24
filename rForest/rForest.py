@@ -49,9 +49,22 @@ rfModel.fit(X, y)
 testX = testDF.drop(columns=['Class'])
 testy = np.ravel(testDF[['Class']])
 
+ConfusionMatrixDisplay.from_estimator(rfModel, testX, testy)
+
+# %%
 pred = rfModel.predict(testX)
 
-accuracy(testy, pred)
+print('accuracy: ', accuracy(testy, pred))
+print('precision: ', precision(testy, pred, average=None))
+print('recall', recall(testy, pred, average=None))
+print('f1', f1(testy, pred, average=None))
+
+pred_proba = rfModel.predict_proba(testX)
+print('loss', log_loss(testy, pred_proba))
+
+print('len: ', len(testy))
+print('pred: ', pred)
+print('true: ', testy)
 
 # %% [markdown]
 # #Using Cross Validation
